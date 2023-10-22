@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torch.optim as optim
 from torchvision import datasets, transforms
+import torchvision
 
 from utils.options import args_parser
 from models.Nets import MLP, CNNMnist, CNNCifar
@@ -71,6 +72,9 @@ if __name__ == '__main__':
         for x in img_size:
             len_in *= x
         net_glob = MLP(dim_in=len_in, dim_hidden=64, dim_out=args.num_classes).to(args.device)
+    elif args.model == 'resnet' and args.dataset == 'mnist':
+        net_glob = torchvision.models.resnet18()
+        net_glob.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     else:
         exit('Error: unrecognized model')
     print(net_glob)
@@ -104,7 +108,7 @@ if __name__ == '__main__':
     plt.plot(range(len(list_loss)), list_loss)
     plt.xlabel('epochs')
     plt.ylabel('train loss')
-    plt.savefig('./log/nn_{}_{}_{}.png'.format(args.dataset, args.model, args.epochs))
+    plt.savefig('nn_{}_{}_{}.png'.format(args.dataset, args.model, args.epochs))
 
     # testing
     if args.dataset == 'mnist':

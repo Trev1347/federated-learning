@@ -58,7 +58,7 @@ if __name__ == '__main__':
         net_glob = MLP(dim_in=len_in, dim_hidden=200, dim_out=args.num_classes).to(args.device)
     elif args.model == 'resnet' and args.dataset == 'mnist':
         net_glob = torchvision.models.resnet18()
-        net_glob.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        net_glob.conv1 = torch.nn.Conv2d(args.num_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     else:
         exit('Error: unrecognized model')
     print(net_glob)
