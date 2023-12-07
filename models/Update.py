@@ -28,7 +28,7 @@ class LocalUpdate(object):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.selected_clients = []
-        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True)
+        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs), batch_size=self.args.local_bs, shuffle=True) #local_bs =1 for HAR_LS for now
 
     def train(self, net):
         net.train()
@@ -40,8 +40,11 @@ class LocalUpdate(object):
             batch_loss = []
             for batch_idx, (images, labels) in enumerate(self.ldr_train):
                 images, labels = images.to(self.args.device), labels.to(self.args.device)
+                labels = labels.float()
+                images = images.float()
                 net.zero_grad()
                 log_probs = net(images)
+                labels = labels.long()
                 loss = self.loss_func(log_probs, labels)
                 loss.backward()
                 optimizer.step()
