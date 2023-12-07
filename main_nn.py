@@ -8,13 +8,26 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset,DataLoader, random_split
 import torch.optim as optim
 from torchvision import datasets, transforms
+import torchvision
 
 from utils.options import args_parser
 from models.Nets import MLP, CNNMnist, CNNCifar
 
+class CustomDataset(Dataset):
+    def __init__(self, data_tensor):
+        #self.data = data_tensor[:, :-1]
+        self.data = data_tensor[:, :-1].reshape(-1,1, 9, 100) #[batch_size, channels, height, width]
+        self.targets = data_tensor[:, -1]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx], self.targets[idx]
+    
 
 def test(net_g, data_loader):
     # testing
@@ -25,7 +38,7 @@ def test(net_g, data_loader):
     for idx, (data, target) in enumerate(data_loader):
         data, target = data.to(args.device), target.to(args.device)
         log_probs = net_g(data)
-        test_loss += F.cross_entropy(log_probs, target).item()
+        test_loss += F.cross_entropy(log_probs, target.long()).item()
         y_pred = log_probs.data.max(1, keepdim=True)[1]
         correct += y_pred.eq(target.data.view_as(y_pred)).long().cpu().sum()
 
@@ -58,8 +71,29 @@ if __name__ == '__main__':
              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         dataset_train = datasets.CIFAR10('./data/cifar', train=True, transform=transform, target_transform=None, download=True)
         img_size = dataset_train[0][0].shape
+    elif args.dataset == 'IMU':
+        dataset = torch.load('IMU_data.pt')
+        dataset = dataset.float()
+        dataset = CustomDataset(dataset)
+        img_size = dataset[0][0].shape
+        total_count = len(dataset)
+        train_count = int(0.3*total_count)
+        test_count = total_count - train_count
+        dataset_train, dataset_test = random_split(dataset, [train_count, test_count])
+        img_size = dataset_train[0][0].shape
+    elif args.dataset == 'HAR_LS':
+        dataset = torch.load('LS_HAR_data.pt')
+        dataset = dataset.float()
+        dataset = CustomDataset(dataset)
+        img_size = dataset[0][0].shape
+        total_count = len(dataset)
+        train_count = int(0.3*total_count)
+        test_count = total_count - train_count
+        dataset_train, dataset_test = random_split(dataset, [train_count, test_count])
+        img_size = dataset_train[0][0].shape
     else:
         exit('Error: unrecognized dataset')
+
 
     # build model
     if args.model == 'cnn' and args.dataset == 'cifar':
@@ -71,13 +105,17 @@ if __name__ == '__main__':
         for x in img_size:
             len_in *= x
         net_glob = MLP(dim_in=len_in, dim_hidden=64, dim_out=args.num_classes).to(args.device)
+    elif args.model == 'resnet':
+        net_glob = torchvision.models.resnet18()
+        net_glob.conv1 = torch.nn.Conv2d(args.num_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        net_glob.to(args.device)
     else:
         exit('Error: unrecognized model')
     print(net_glob)
 
     # training
     optimizer = optim.SGD(net_glob.parameters(), lr=args.lr, momentum=args.momentum)
-    train_loader = DataLoader(dataset_train, batch_size=64, shuffle=True)
+    train_loader = DataLoader(dataset_train, batch_size=1, shuffle=True)
 
     list_loss = []
     net_glob.train()
@@ -86,7 +124,9 @@ if __name__ == '__main__':
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(args.device), target.to(args.device)
             optimizer.zero_grad()
+            #print(data.shape)
             output = net_glob(data)
+            target = target.long()
             loss = F.cross_entropy(output, target)
             loss.backward()
             optimizer.step()
@@ -98,13 +138,14 @@ if __name__ == '__main__':
         loss_avg = sum(batch_loss)/len(batch_loss)
         print('\nTrain loss:', loss_avg)
         list_loss.append(loss_avg)
+        #train_acc, train_loss = test(net_glob, train_loader)
 
     # plot loss
     plt.figure()
     plt.plot(range(len(list_loss)), list_loss)
     plt.xlabel('epochs')
     plt.ylabel('train loss')
-    plt.savefig('./log/nn_{}_{}_{}.png'.format(args.dataset, args.model, args.epochs))
+    plt.savefig('nn_{}_{}_{}.png'.format(args.dataset, args.model, args.epochs))
 
     # testing
     if args.dataset == 'mnist':
@@ -120,8 +161,12 @@ if __name__ == '__main__':
              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         dataset_test = datasets.CIFAR10('./data/cifar', train=False, transform=transform, target_transform=None, download=True)
         test_loader = DataLoader(dataset_test, batch_size=1000, shuffle=False)
+    elif args.dataset == 'ASL':
+        print('',end='')
+    elif args.dataset == 'IMU':
+        print('',end='')
     else:
         exit('Error: unrecognized dataset')
 
     print('test on', len(dataset_test), 'samples')
-    test_acc, test_loss = test(net_glob, test_loader)
+    test_acc, test_loss = test(net_glob, dataset_test)
