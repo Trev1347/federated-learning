@@ -12,7 +12,7 @@ import torch
 
 from utils.sampling import mnist_iid, mnist_noniid, cifar_iid
 from utils.options import args_parser
-from models.Update2 import LocalUpdate
+from models.Update import LocalUpdate
 from models.Nets2 import MLP, CNNMnist, CNNCifar, ResNetTest
 from models.Fed import FedAvg
 from models.test2 import test_img
@@ -153,6 +153,23 @@ if __name__ == '__main__':
         else:
             dict_users = mnist_noniid(dataset_train, args.num_users)
 
+    elif args.dataset == 'HAR_LS':
+        dataset = torch.load('LS_HAR_data.pt')
+        #dataset = dataset.float()
+        dataset = CustomDataset(dataset)
+
+        total_count = len(dataset)
+        train_count = int(0.7*total_count) # 70%
+        test_count = total_count - train_count
+
+        dataset_train, dataset_test = random_split(dataset, [train_count, test_count])
+        train_indices = dataset_train.indices
+        all_labels = dataset.targets#.numpy()
+        train_labels = all_labels[train_indices]
+        dict_users = mnist_iid(dataset_train, args.num_users)
+        #dict_users = IMU_noniid(dataset_train, args.num_users,train_labels)
+        img_size = dataset_train[0][0].shape
+
     elif args.dataset == 'ASL':
         dataset = torch.load('train_data.pt')
         total_count = len(dataset)
@@ -241,10 +258,6 @@ if __name__ == '__main__':
     else:
         exit('Error: unrecognized model')
 
-    #Ensures that model works with Privacy Engine 
-#    net_glob = ModuleValidator.fix(net_glob)
-    print(net_glob)
-
 
     net_glob.train()
 
@@ -260,23 +273,13 @@ if __name__ == '__main__':
     best_loss = None
     val_acc_list, net_list = [], []
 
-    file1 = open("output_FL_Resnet_MNIST.txt", "w") 
+    file1 = open("output_FL_Resnet_HAR.txt", "w") 
 
     epsList = [ ]
 
     if args.all_clients: 
         print("Aggregation over all clients")
         w_locals = [w_glob for i in range(args.num_users)]
-
-    # Uncomment for adaptive dp
-    idxs_users = []
-    privacyIndx = []
-    i = 0
-    for i in range(args.num_users):
-        idxs_users.append(i)
-        privacyIndx.append(1.2 + (0.1 * i))
-    print(privacyIndx)
-    
         
     for iter in range(args.epochs):
         print("Epoch: ", iter)
@@ -285,31 +288,23 @@ if __name__ == '__main__':
             w_locals = []
         m = max(int(args.frac * args.num_users), 1)
         #Comment out when using adaptive dp
-       # idxs_users = np.random.choice(range(args.num_users), m, replace=False)
+        idxs_users = np.random.choice(range(args.num_users), m, replace=False)
         #print("Idx List: " , idxs_users)
-        if (iter != 0):
-            privacyIndx = adjustPB(privacyIndx, accuracyList)
-            print(privacyIndx)
-
+        
         accuracyList = []
         for idx in idxs_users:
             print(" User: " , idx)
-            #local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
-            #local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx], privacy=1.2)           #use for regular DP
-            local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx], privacy=privacyIndx[idx])       #use for adpative DP
-            w, loss, eps= local.train(net=copy.deepcopy(net_glob).to(args.device))
+            local = LocalUpdate(args=args, dataset=dataset_train, idxs=dict_users[idx])
+            w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device))
 
             acc_train, l = test_img(net_glob, dataset_train, args)
             print('Accuracy: ', acc_train, "\n")
             accuracyList.append(acc_train)
 
-            print("Epsilon: ", eps)
             if args.all_clients:
                 w_locals[idx] = copy.deepcopy(w)
-                epsList.append(eps)
             else:
                 w_locals.append(copy.deepcopy(w))
-                epsList.append(eps)
             loss_locals.append(copy.deepcopy(loss))
 
         print("Epsilon List: ", epsList)
@@ -343,7 +338,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(range(len(loss_train)), loss_train)
     plt.ylabel('train_loss')
-    plt.savefig('fed_{}_{}_{}_C{}_Non_iid{}_DP_5_clients.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
+    plt.savefig('fed_{}_{}_{}_C{}_Non_iid{}_DP_3_clients.png'.format(args.dataset, args.model, args.epochs, args.frac, args.iid))
 
     # testing
     net_glob.eval()
