@@ -49,3 +49,4 @@ wheels/
 venv/
 ENV/
 
+LS_HAR_data.pt
